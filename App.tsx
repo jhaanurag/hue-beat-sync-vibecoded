@@ -1,98 +1,31 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useEffect, useCallback, useState } from 'react';
 import Controls from './components/Controls';
-import { ColorMode } from './types';
+import AnimationController from './components/AnimationController';
+import { SmallHud } from './components/Controls';
+import { useAtom } from 'jotai';
+import { visibleAtom } from './state/atoms';
 
 const App: React.FC = () => {
-  // --- State ---
-  const [bpm, setBpm] = useState<number>(120);
-  const [multiplier, setMultiplier] = useState<number>(1);
-  const [isPlaying, setIsPlaying] = useState<boolean>(true);
-  const [mode, setMode] = useState<ColorMode>(ColorMode.FLOW);
-  const [visibleControls, setVisibleControls] = useState<boolean>(true);
-  const [hueStep, setHueStep] = useState<number>(137.5); // Default to Golden Angle
+  // --- State (moved to jotai atoms) ---
+  // Only read visible in App to prevent App from re-rendering when other atoms change
+  const [visibleControls, setVisibleControls] = useAtom(visibleAtom);
+
+  // Visual state is handled in an independent AnimationController which updates the DOM
   
-  // Visual state
-  const [hue, setHue] = useState<number>(0);
-  const [lightness, setLightness] = useState<number>(50); 
-  
-  // --- Animation Refs ---
-  const requestRef = useRef<number>(0);
-  const lastTimeRef = useRef<number>(0);
-  const accumulatedTimeRef = useRef<number>(0);
+  // --- Animation controller runs independently, no local refs needed here ---
 
   // --- Logic ---
 
-  const animate = useCallback((time: number) => {
-    if (lastTimeRef.current !== undefined) {
-      const deltaTime = time - lastTimeRef.current;
-      
-      if (isPlaying) {
-        // beatDuration = duration of one quarter note (1 beat)
-        const beatDuration = 60000 / bpm; 
-        
-        // intervalDuration = duration based on the multiplier
-        const intervalDuration = beatDuration / multiplier;
+  // We offload the animation loop to AnimationController so App doesn't re-render on every animation atom change
 
-        if (mode === ColorMode.FLOW) {
-          // Flow: Smooth rotation.
-          // Standard rate (1x): 360 degrees over 4 beats (1 bar).
-          // If multiplier increases, flow speeds up.
-          const degreesPerMs = (360 / (4 * beatDuration)) * multiplier;
-          setHue(h => (h + deltaTime * degreesPerMs) % 360);
-          setLightness(50);
-        } 
-        else if (mode === ColorMode.STEP) {
-          // Step: Change abruptly every interval
-          accumulatedTimeRef.current += deltaTime;
-          if (accumulatedTimeRef.current >= intervalDuration) {
-            // Determine step size
-            const step = hueStep === -1 ? Math.random() * 360 : hueStep;
-            
-            setHue(h => (h + step) % 360); 
-            accumulatedTimeRef.current -= intervalDuration;
-          }
-          setLightness(50);
-        }
-        else if (mode === ColorMode.STROBE) {
-          // Strobe: Flash ON/OFF based on interval
-          accumulatedTimeRef.current += deltaTime;
-          
-          const phase = accumulatedTimeRef.current % intervalDuration;
-          const isFlash = phase < (intervalDuration / 2); 
-          
-          if (isFlash) {
-            setLightness(50);
-          } else {
-            setLightness(0); // Black
-          }
+  // No animation loop here — handled in AnimationController
 
-          // Advance hue every interval cycle
-          if (accumulatedTimeRef.current >= intervalDuration) {
-            const step = hueStep === -1 ? Math.random() * 360 : hueStep;
-            setHue(h => (h + step) % 360);
-            accumulatedTimeRef.current -= intervalDuration;
-          }
-        }
-      }
-    }
-    lastTimeRef.current = time;
-    requestRef.current = requestAnimationFrame(animate);
-  }, [bpm, multiplier, isPlaying, mode, hueStep]);
+  // Reset accumulation when visible changes (optional) — animation controller cares about its own atoms
 
-  useEffect(() => {
-    requestRef.current = requestAnimationFrame(animate);
-    return () => {
-      if (requestRef.current) cancelAnimationFrame(requestRef.current);
-    };
-  }, [animate]);
-
-  // Reset accumulation when modes change to prevent jumps
-  useEffect(() => {
-    accumulatedTimeRef.current = 0;
-  }, [mode, bpm, multiplier, hueStep]);
+  // `SmallHud` runs its own (throttled) DOM update loop for hue — remove App-level display state to avoid rerenders
 
   // --- Fullscreen Helper ---
-  const toggleFullscreen = async () => {
+  const toggleFullscreen = useCallback(async () => {
     if (!document.fullscreenElement) {
       try {
         await document.documentElement.requestFullscreen();
@@ -104,44 +37,24 @@ const App: React.FC = () => {
         await document.exitFullscreen();
       }
     }
-  };
+  }, []);
 
   // --- Render ---
   
-  const bgStyle = {
-    backgroundColor: `hsl(${hue}, 100%, ${lightness}%)`,
-    transition: mode === ColorMode.FLOW ? 'none' : 'background-color 0.0s' // Instant for step/strobe
-  };
+  // Note: background color is set directly via animation loop to avoid re-renders
 
   return (
     <div 
       className="relative w-screen h-screen overflow-hidden flex items-center justify-center font-mono"
-      style={bgStyle}
     >
+      <AnimationController />
       <Controls
-        bpm={bpm}
-        setBpm={setBpm}
-        multiplier={multiplier}
-        setMultiplier={setMultiplier}
-        isPlaying={isPlaying}
-        setIsPlaying={setIsPlaying}
-        mode={mode}
-        setMode={setMode}
-        hueStep={hueStep}
-        setHueStep={setHueStep}
         toggleFullscreen={toggleFullscreen}
-        visible={visibleControls}
-        setVisible={setVisibleControls}
       />
       
       {/* Minimal Overlay Instruction when controls hidden */}
       {!visibleControls && (
-        <div className="absolute bottom-6 left-6 text-white/40 text-xs font-bold pointer-events-none select-none flex gap-6 tracking-widest">
-           <span>{Math.round(hue)}°</span>
-           <span>{bpm} BPM</span>
-           <span>x{multiplier}</span>
-           <span>{hueStep === -1 ? 'RND' : hueStep + '°'}</span>
-        </div>
+        <SmallHud />
       )}
     </div>
   );
