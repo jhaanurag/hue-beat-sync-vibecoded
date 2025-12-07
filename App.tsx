@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Controls from './components/Controls';
-import { ColorMode } from './types';
+import { ColorMode, SpotifyTrack } from './types';
 
 const App: React.FC = () => {
   // --- State ---
@@ -11,6 +11,10 @@ const App: React.FC = () => {
   const [visibleControls, setVisibleControls] = useState<boolean>(true);
   const [hueStep, setHueStep] = useState<number>(137.5); // Default to Golden Angle
   
+  // Spotify State
+  const [spotifyToken, setSpotifyToken] = useState<string | null>(null);
+  const [spotifyTrack, setSpotifyTrack] = useState<SpotifyTrack | null>(null);
+  
   // Visual state
   const [hue, setHue] = useState<number>(0);
   const [lightness, setLightness] = useState<number>(50); 
@@ -19,6 +23,101 @@ const App: React.FC = () => {
   const requestRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(0);
   const accumulatedTimeRef = useRef<number>(0);
+  const pollIntervalRef = useRef<number | null>(null);
+
+  // --- Spotify Logic ---
+
+  useEffect(() => {
+    // 1. Check for token in URL hash (Redirect from Spotify)
+    const hash = window.location.hash;
+    if (hash && hash.includes('access_token')) {
+      const token = new URLSearchParams(hash.substring(1)).get('access_token');
+      if (token) {
+        setSpotifyToken(token);
+        localStorage.setItem('spotify_token', token);
+        window.location.hash = ''; // Clear hash
+      }
+    } else {
+        // 2. Check LocalStorage
+        const savedToken = localStorage.getItem('spotify_token');
+        if (savedToken) setSpotifyToken(savedToken);
+    }
+  }, []);
+
+  const handleSpotifyConnect = (clientId: string) => {
+    const redirectUri = window.location.origin + window.location.pathname;
+    const scopes = 'user-read-currently-playing user-read-playback-state';
+    // Using Implicit Grant Flow for client-side only (Note: Deprecated but works for static prototypes without backend)
+    const authUrl = `https://accounts.spotify.com/authorize?client_id=${clientId}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scopes)}`;
+    window.location.href = authUrl;
+  };
+
+  const handleSpotifyDisconnect = () => {
+    setSpotifyToken(null);
+    setSpotifyTrack(null);
+    localStorage.removeItem('spotify_token');
+    if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+    }
+  };
+
+  // Poll Spotify for Current Song
+  useEffect(() => {
+    if (!spotifyToken) return;
+
+    const fetchSpotifyData = async () => {
+        try {
+            // Get Currently Playing
+            const playerRes = await fetch('https://api.spotify.com/v1/me/player/currently-playing', {
+                headers: { 'Authorization': `Bearer ${spotifyToken}` }
+            });
+
+            if (playerRes.status === 204) return; // No content
+            if (playerRes.status === 401) {
+                handleSpotifyDisconnect(); // Token expired
+                return;
+            }
+
+            const playerData = await playerRes.json();
+            
+            if (playerData.item && playerData.item.type === 'track') {
+                const trackId = playerData.item.id;
+                
+                // Only fetch Audio Features if it's a new track or we haven't set BPM yet
+                if (!spotifyTrack || spotifyTrack.name !== playerData.item.name) {
+                    const featuresRes = await fetch(`https://api.spotify.com/v1/audio-features/${trackId}`, {
+                        headers: { 'Authorization': `Bearer ${spotifyToken}` }
+                    });
+                    
+                    if (featuresRes.ok) {
+                        const features = await featuresRes.json();
+                        const trackBpm = Math.round(features.tempo);
+                        
+                        setSpotifyTrack({
+                            name: playerData.item.name,
+                            artist: playerData.item.artists.map((a: any) => a.name).join(', '),
+                            image: playerData.item.album.images[0]?.url,
+                            bpm: trackBpm
+                        });
+                        
+                        // AUTO SYNC BPM
+                        setBpm(trackBpm);
+                    }
+                }
+            }
+        } catch (error) {
+            console.error("Spotify Fetch Error", error);
+        }
+    };
+
+    fetchSpotifyData(); // Initial fetch
+    pollIntervalRef.current = window.setInterval(fetchSpotifyData, 3000); // Poll every 3s
+
+    return () => {
+        if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    };
+  }, [spotifyToken, spotifyTrack]);
+
 
   // --- Logic ---
 
@@ -132,6 +231,10 @@ const App: React.FC = () => {
         toggleFullscreen={toggleFullscreen}
         visible={visibleControls}
         setVisible={setVisibleControls}
+        spotifyTrack={spotifyTrack}
+        onSpotifyConnect={handleSpotifyConnect}
+        onSpotifyDisconnect={handleSpotifyDisconnect}
+        isSpotifyConnected={!!spotifyToken}
       />
       
       {/* Minimal Overlay Instruction when controls hidden */}
@@ -140,7 +243,7 @@ const App: React.FC = () => {
            <span>{Math.round(hue)}°</span>
            <span>{bpm} BPM</span>
            <span>x{multiplier}</span>
-           <span>{hueStep === -1 ? 'RND' : hueStep + '°'}</span>
+           {spotifyTrack && <span className="text-green-400">{spotifyTrack.name}</span>}
         </div>
       )}
     </div>

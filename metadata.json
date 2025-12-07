@@ -1,5 +1,7 @@
 {
   "name": "Hue Beat",
   "description": "A fullscreen immersive color experience that pulses and shifts hues in sync with your custom BPM.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [
+    "microphone"
+  ]
 }
