@@ -52,6 +52,10 @@ const AnimationController: React.FC = () => {
       }
       lastTimeRef.current = time;
       setAnimation(hueRef.current, lightnessRef.current);
+      // set CSS var for header pulse duration so Header doesn't need to subscribe to bpm
+      try {
+        document.documentElement.style.setProperty('--hue-pulse-duration', `${60/bpm}s`);
+      } catch (err) {}
       const rootNode = document.getElementById('root');
       if (rootNode) {
         const bgColor = `hsl(${Math.round(hueRef.current)}, 100%, ${Math.round(lightnessRef.current)}%)`;

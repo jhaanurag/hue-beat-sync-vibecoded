@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { ColorMode } from '../types';
 
-import { useAtom, useAtomValue, useSetAtom } from 'jotai';
+import { useAtom, useAtomValue, useSetAtom, useStore } from 'jotai';
 import { bpmAtom, multiplierAtom, isPlayingAtom, modeAtom, visibleAtom, hueStepAtom } from '../state/atoms';
 import KeyboardShortcuts from './KeyboardShortcuts';
 import { animationState } from '../lib/animation';
@@ -123,23 +123,7 @@ const ShiftGrid: React.FC = React.memo(() => {
   );
 });
 
-const ModesGrid: React.FC = React.memo(() => {
-  const mode = useAtomValue(modeAtom);
-  const setMode = useSetAtom(modeAtom);
-  return (
-    <div className="space-y-2 mb-8">
-      <span className="text-xs font-bold text-white/40 uppercase tracking-widest ml-1">Mode</span>
-      <div className="grid grid-cols-3 gap-2">
-        {modeOptions.map((m) => (
-          <button key={m.id} onClick={() => setMode(m.id)} className={`flex flex-col items-center justify-center gap-2 p-4 border transition-all ${mode === m.id ? 'bg-white text-black border-white' : 'bg-transparent text-white/60 border-white/10 hover:bg-white/5 hover:border-white/30'}`}>
-            <m.icon size={20} />
-            <span className="text-xs font-bold tracking-wider">{m.label}</span>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-});
+// Small HUD is exported below and will handle DOM updates without subscribing via React.
 
 const PlaybackControls: React.FC<{ toggleFullscreen: () => void }> = React.memo(({ toggleFullscreen }) => {
   const isPlaying = useAtomValue(isPlayingAtom);
@@ -155,39 +139,47 @@ const PlaybackControls: React.FC<{ toggleFullscreen: () => void }> = React.memo(
 });
 
 export const SmallHud: React.FC = React.memo(() => {
-  // We'll avoid state updates for hue — the DOM will be updated directly from animationState
   const hueEl = useRef<HTMLSpanElement | null>(null);
-  const bpm = useAtomValue(bpmAtom);
-  const multiplier = useAtomValue(multiplierAtom);
-  const hueStep = useAtomValue(hueStepAtom);
+  const bpmEl = useRef<HTMLSpanElement | null>(null);
+  const multEl = useRef<HTMLSpanElement | null>(null);
+  const stepEl = useRef<HTMLSpanElement | null>(null);
+  const store = useStore();
   useEffect(() => {
     let rafId = 0;
+    let last = performance.now();
     const update = () => {
-      if (hueEl.current) {
-        hueEl.current.textContent = Math.round(animationState.hue) + '°';
+      const now = performance.now();
+      if (now - last >= 250) {
+        const bpm = store.get(bpmAtom);
+        const multiplier = store.get(multiplierAtom);
+        const hueStep = store.get(hueStepAtom);
+        if (hueEl.current) hueEl.current.textContent = Math.round(animationState.hue) + '°';
+        if (bpmEl.current) bpmEl.current.textContent = `${bpm} BPM`;
+        if (multEl.current) multEl.current.textContent = `x${multiplier}`;
+        if (stepEl.current) stepEl.current.textContent = hueStep === -1 ? 'RND' : `${hueStep}°`;
+        last = now;
       }
-      rafId = requestAnimationFrame(() => setTimeout(update, 300));
+      rafId = requestAnimationFrame(update);
     };
     rafId = requestAnimationFrame(update);
     return () => cancelAnimationFrame(rafId);
-  }, []);
+  }, [store]);
   return (
     <div className="absolute bottom-6 left-6 text-white/40 text-xs font-bold pointer-events-none select-none flex gap-6 tracking-widest">
       <span ref={hueEl}>{Math.round(animationState.hue)}°</span>
-      <span>{bpm} BPM</span>
-      <span>x{multiplier}</span>
-      <span>{hueStep === -1 ? 'RND' : hueStep + '°'}</span>
+      <span ref={bpmEl}>120 BPM</span>
+      <span ref={multEl}>x1</span>
+      <span ref={stepEl}>137.5°</span>
     </div>
   );
 });
 
 const Header: React.FC = React.memo(() => {
-  const bpm = useAtomValue(bpmAtom);
   const setVisible = useSetAtom(visibleAtom);
   return (
     <div className="flex justify-between items-center mb-8 border-b border-white/10 pb-4">
       <h1 className="text-white font-bold text-2xl tracking-tighter flex items-center gap-3">
-        <span className="w-3 h-3 bg-white animate-pulse" style={{ animationDuration: `${60/bpm}s` }}></span>
+        <span className="w-3 h-3 bg-white animate-pulse" style={{ animationDuration: 'var(--hue-pulse-duration)' }}></span>
         HUE_BEAT
       </h1>
       <button onClick={() => setVisible(false)} className="text-white/50 hover:text-white transition-colors p-2 hover:bg-white/10" title="Hide Controls (Press 'H')">
