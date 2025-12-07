@@ -1,21 +1,31 @@
-import { useEffect, useRef } from 'react';
-import { useAtomValue, useSetAtom } from 'jotai';
+import React, { useEffect, useRef } from 'react';
+import { useSetAtom, useStore } from 'jotai';
 import { bpmAtom, isPlayingAtom, visibleAtom } from '../state/atoms';
 
 const KeyboardShortcuts: React.FC = () => {
-  const bpm = useAtomValue(bpmAtom);
-  const isPlaying = useAtomValue(isPlayingAtom);
+  const store = useStore();
   const setBpm = useSetAtom(bpmAtom);
   const setIsPlaying = useSetAtom(isPlayingAtom);
-  const visible = useAtomValue(visibleAtom);
   const setVisible = useSetAtom(visibleAtom);
-
-  const bpmRef = useRef(bpm);
-  const isPlayingRef = useRef(isPlaying);
-  const visibleRef = useRef(visible);
-  useEffect(() => { bpmRef.current = bpm; }, [bpm]);
-  useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
-  useEffect(() => { visibleRef.current = visible; }, [visible]);
+  const bpmRef = useRef(store.get(bpmAtom));
+  const isPlayingRef = useRef(store.get(isPlayingAtom));
+  const visibleRef = useRef(store.get(visibleAtom));
+  useEffect(() => {
+    const unsubscribeBpm = store.sub(bpmAtom, () => {
+      bpmRef.current = store.get(bpmAtom);
+    });
+    const unsubscribeIsPlaying = store.sub(isPlayingAtom, () => {
+      isPlayingRef.current = store.get(isPlayingAtom);
+    });
+    const unsubscribeVisible = store.sub(visibleAtom, () => {
+      visibleRef.current = store.get(visibleAtom);
+    });
+    return () => {
+      unsubscribeBpm();
+      unsubscribeIsPlaying();
+      unsubscribeVisible();
+    };
+  }, [store]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

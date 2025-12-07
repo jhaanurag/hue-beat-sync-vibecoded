@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useState, useRef, useMemo } from 'react';
 import { 
   Play, 
   Pause, 
@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { ColorMode, SpotifyTrack } from '../types';
 
-import { useAtom, useAtomValue, useSetAtom, useStore } from 'jotai';
+import { atom, useAtom, useAtomValue, useSetAtom, useStore } from 'jotai';
 import { bpmAtom, multiplierAtom, isPlayingAtom, modeAtom, visibleAtom, hueStepAtom } from '../state/atoms';
 import KeyboardShortcuts from './KeyboardShortcuts';
 import { animationState } from '../lib/animation';
@@ -48,21 +48,6 @@ const modeOptions = [
 const TempoSection: React.FC = React.memo(() => {
   const bpm = useAtomValue(bpmAtom);
   const setBpm = useSetAtom(bpmAtom);
-  const [tapTimes, setTapTimes] = useState<number[]>([]);
-  const handleTap = useCallback(() => {
-    const now = performance.now();
-    setTapTimes(prev => {
-      const newTaps = [...prev, now].filter(t => now - t < 2000);
-      if (newTaps.length > 1) {
-        const intervals = [] as number[];
-        for (let i = 1; i < newTaps.length; i++) intervals.push(newTaps[i] - newTaps[i - 1]);
-        const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
-        const newBpm = Math.round(60000 / avgInterval);
-        if (newBpm > 30 && newBpm < 300) setBpm(newBpm);
-      }
-      return newTaps;
-    });
-  }, [setBpm]);
   return (
     <div className="bg-white/5 p-6 border border-white/10 mb-6 group hover:border-white/30 transition-colors">
       <div className="flex items-center justify-between mb-6">
@@ -73,12 +58,8 @@ const TempoSection: React.FC = React.memo(() => {
             <span className="text-sm text-white/50 font-bold">BPM</span>
           </div>
         </div>
-        <div className="flex gap-2 items-stretch">
-          <button onClick={handleTap} className="px-5 bg-white/10 hover:bg-white/20 text-white font-medium transition-all active:scale-95 flex flex-col items-center justify-center gap-1 border border-white/5 hover:border-white/50"><MousePointerClick size={16} /><span className="text-[10px] uppercase tracking-wide opacity-70">Tap</span></button>
-          <div className="flex flex-col gap-2">
-            <button onClick={() => setBpm(bpm + 1)} className="p-2 bg-white/10 hover:bg-white/20 text-white transition-colors border border-white/5 hover:border-white/50 flex items-center justify-center"><Plus size={14} /></button>
-            <button onClick={() => setBpm(Math.max(1, bpm - 1))} className="p-2 bg-white/10 hover:bg-white/20 text-white transition-colors border border-white/5 hover:border-white/50 flex items-center justify-center"><Minus size={14} /></button>
-          </div>
+            <div className="flex gap-2 items-stretch">
+          <TempoActions />
         </div>
       </div>
       <div className="mb-6 px-1">
@@ -86,8 +67,8 @@ const TempoSection: React.FC = React.memo(() => {
         <div className="flex justify-between text-[10px] font-bold text-white/30 mt-2 font-mono uppercase tracking-widest select-none"><span>60</span><span>120</span><span>180</span></div>
       </div>
       <div className="grid grid-cols-2 gap-2">
-        <button onClick={() => setBpm(Math.max(1, Math.floor(bpm / 2)))} className="flex items-center justify-center gap-2 py-3 bg-white/5 hover:bg-white/10 text-white/70 hover:text-white transition-colors text-xs font-bold border border-white/5 hover:border-white/30 uppercase tracking-wider"><span className="text-lg opacity-50">÷2</span> Half</button>
-        <button onClick={() => setBpm(Math.min(999, bpm * 2))} className="flex items-center justify-center gap-2 py-3 bg-white/5 hover:bg-white/10 text-white/70 hover:text-white transition-colors text-xs font-bold border border-white/5 hover:border-white/30 uppercase tracking-wider"><span className="text-lg opacity-50">×2</span> Double</button>
+      <button onClick={() => setBpm(x => Math.max(1, Math.floor(x / 2)))} className="flex items-center justify-center gap-2 py-3 bg-white/5 hover:bg-white/10 text-white/70 hover:text-white transition-colors text-xs font-bold border border-white/5 hover:border-white/30 uppercase tracking-wider"><span className="text-lg opacity-50">÷2</span> Half</button>
+      <button onClick={() => setBpm(x => Math.min(999, x * 2))} className="flex items-center justify-center gap-2 py-3 bg-white/5 hover:bg-white/10 text-white/70 hover:text-white transition-colors text-xs font-bold border border-white/5 hover:border-white/30 uppercase tracking-wider"><span className="text-lg opacity-50">×2</span> Double</button>
       </div>
     </div>
   );
@@ -127,6 +108,37 @@ const ShiftGrid: React.FC = React.memo(() => {
   );
 });
 
+// ModeButton is a fully memoized button that only subscribes to a derived atom for its active state.
+const ModeButton: React.FC<{ id: ColorMode; label: string; Icon: any }> = React.memo(({ id, label, Icon }) => {
+  // memoize the derived atom per `id` so the atom reference is stable across renders
+  const isActiveAtom = useMemo(() => atom((get) => get(modeAtom) === id), [id]);
+  const isActive = useAtomValue(isActiveAtom);
+  const setMode = useSetAtom(modeAtom);
+  const onClick = useCallback(() => setMode(id), [setMode, id]);
+  return (
+    <button
+      onClick={onClick}
+      className={`flex flex-col items-center justify-center gap-2 p-4 border transition-all ${isActive ? 'bg-white text-black border-white' : 'bg-transparent text-white/60 border-white/10 hover:bg-white/5 hover:border-white/30'}`}
+    >
+      <Icon size={20} />
+      <span className="text-xs font-bold tracking-wider">{label}</span>
+    </button>
+  );
+});
+
+const ModesGrid: React.FC = React.memo(() => {
+  return (
+    <div className="space-y-2 mb-8">
+      <span className="text-xs font-bold text-white/40 uppercase tracking-widest ml-1">Mode</span>
+      <div className="grid grid-cols-3 gap-2">
+        {modeOptions.map((m) => (
+          <ModeButton key={m.id} id={m.id} label={m.label} Icon={m.icon} />
+        ))}
+      </div>
+    </div>
+  );
+});
+
 // Small HUD is exported below and will handle DOM updates without subscribing via React.
 
 const PlaybackControls: React.FC<{ toggleFullscreen: () => void }> = React.memo(({ toggleFullscreen }) => {
@@ -139,6 +151,34 @@ const PlaybackControls: React.FC<{ toggleFullscreen: () => void }> = React.memo(
       </button>
       <button onClick={toggleFullscreen} className="flex items-center justify-center gap-3 p-5 bg-transparent hover:bg-white/5 text-white border border-white/20 hover:border-white transition-colors"><Maximize size={20} /><span className="text-sm font-bold">FULLSCREEN</span></button>
     </div>
+  );
+});
+
+const TempoActions: React.FC = React.memo(() => {
+  const setBpm = useSetAtom(bpmAtom);
+  const [tapTimes, setTapTimes] = useState<number[]>([]);
+  const handleTap = useCallback(() => {
+    const now = performance.now();
+    setTapTimes(prev => {
+      const newTaps = [...prev, now].filter(t => now - t < 2000);
+      if (newTaps.length > 1) {
+        const intervals = [] as number[];
+        for (let i = 1; i < newTaps.length; i++) intervals.push(newTaps[i] - newTaps[i - 1]);
+        const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+        const newBpm = Math.round(60000 / avgInterval);
+        if (newBpm > 30 && newBpm < 300) setBpm(newBpm);
+      }
+      return newTaps;
+    });
+  }, [setBpm]);
+  return (
+    <>
+      <button onClick={handleTap} className="px-5 bg-white/10 hover:bg-white/20 text-white font-medium transition-all active:scale-95 flex flex-col items-center justify-center gap-1 border border-white/5 hover:border-white/50"><MousePointerClick size={16} /><span className="text-[10px] uppercase tracking-wide opacity-70">Tap</span></button>
+      <div className="flex flex-col gap-2">
+        <button onClick={() => setBpm(x => x + 1)} className="p-2 bg-white/10 hover:bg-white/20 text-white transition-colors border border-white/5 hover:border-white/50 flex items-center justify-center"><Plus size={14} /></button>
+        <button onClick={() => setBpm(x => Math.max(1, x - 1))} className="p-2 bg-white/10 hover:bg-white/20 text-white transition-colors border border-white/5 hover:border-white/50 flex items-center justify-center"><Minus size={14} /></button>
+      </div>
+    </>
   );
 });
 
