@@ -10,9 +10,13 @@ import {
   Plus,
   EyeOff,
   MousePointerClick,
-  Shuffle
+  Shuffle,
+  Mic,
+  Music,
+  Link as LinkIcon,
+  LogOut
 } from 'lucide-react';
-import { ColorMode } from '../types';
+import { ColorMode, SpotifyTrack } from '../types';
 
 import { useAtom, useAtomValue, useSetAtom, useStore } from 'jotai';
 import { bpmAtom, multiplierAtom, isPlayingAtom, modeAtom, visibleAtom, hueStepAtom } from '../state/atoms';

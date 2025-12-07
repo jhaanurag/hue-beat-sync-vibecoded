@@ -4,6 +4,13 @@ export enum ColorMode {
   STROBE = 'STROBE' // Flashes between black and color
 }
 
+export interface SpotifyTrack {
+  name: string;
+  artist: string;
+  image: string;
+  bpm: number;
+}
+
 export interface AppState {
   bpm: number;
   multiplier: number; // Speed multiplier (e.g., 0.5x, 1x, 2x)

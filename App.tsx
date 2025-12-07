@@ -1,18 +1,24 @@
 import React, { useEffect, useCallback, useState } from 'react';
 import Controls from './components/Controls';
-import AnimationController from './components/AnimationController';
-import { SmallHud } from './components/Controls';
-import { useAtom } from 'jotai';
-import { visibleAtom } from './state/atoms';
+import { ColorMode } from './types';
 
 const App: React.FC = () => {
-  // --- State (moved to jotai atoms) ---
-  // Only read visible in App to prevent App from re-rendering when other atoms change
-  const [visibleControls, setVisibleControls] = useAtom(visibleAtom);
-
-  // Visual state is handled in an independent AnimationController which updates the DOM
+  // --- State ---
+  const [bpm, setBpm] = useState<number>(120);
+  const [multiplier, setMultiplier] = useState<number>(1);
+  const [isPlaying, setIsPlaying] = useState<boolean>(true);
+  const [mode, setMode] = useState<ColorMode>(ColorMode.FLOW);
+  const [visibleControls, setVisibleControls] = useState<boolean>(true);
+  const [hueStep, setHueStep] = useState<number>(137.5); // Default to Golden Angle
   
-  // --- Animation controller runs independently, no local refs needed here ---
+  // Visual state
+  const [hue, setHue] = useState<number>(0);
+  const [lightness, setLightness] = useState<number>(50); 
+  
+  // --- Animation Refs ---
+  const requestRef = useRef<number>(0);
+  const lastTimeRef = useRef<number>(0);
+  const accumulatedTimeRef = useRef<number>(0);
 
   // --- Logic ---
 
@@ -50,11 +56,18 @@ const App: React.FC = () => {
       <AnimationController />
       <Controls
         toggleFullscreen={toggleFullscreen}
+        visible={visibleControls}
+        setVisible={setVisibleControls}
       />
       
       {/* Minimal Overlay Instruction when controls hidden */}
       {!visibleControls && (
-        <SmallHud />
+        <div className="absolute bottom-6 left-6 text-white/40 text-xs font-bold pointer-events-none select-none flex gap-6 tracking-widest">
+           <span>{Math.round(hue)}°</span>
+           <span>{bpm} BPM</span>
+           <span>x{multiplier}</span>
+           <span>{hueStep === -1 ? 'RND' : hueStep + '°'}</span>
+        </div>
       )}
     </div>
   );
