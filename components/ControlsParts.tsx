@@ -1,4 +1,5 @@
 import React, { memo, useCallback } from 'react';
+import { useRenderLogger } from './renderLogger';
 import { useAtomValue, useSetAtom } from 'jotai';
 import {
   bpmAtom,
@@ -12,6 +13,7 @@ import { Play, Pause, Maximize, Plus, Minus, MousePointerClick } from 'lucide-re
 import { ColorMode } from '../types';
 
 export const Header = memo(function Header() {
+  useRenderLogger('ControlsParts.Header');
   const bpm = useAtomValue(bpmAtom);
   return (
     <div className="flex justify-between items-center mb-8 border-b border-white/10 pb-4">
@@ -27,6 +29,7 @@ export const Header = memo(function Header() {
 export const HiddenToggle = memo(function HiddenToggle() {
   const setVisible = useSetAtom(visibleAtom);
   const open = useCallback(() => setVisible(true), [setVisible]);
+  useRenderLogger('ControlsParts.HiddenToggle');
   return (
     <div className="fixed bottom-6 right-6 z-50">
       <button
@@ -50,6 +53,7 @@ export const TempoControl = memo(function TempoControl() {
     // This is intentionally light: callers will setBpm directly.
     setBpm(prev => Math.max(40, Math.min(240, prev))); // noop safe
   }, [setBpm]);
+  useRenderLogger('ControlsParts.TempoControl');
 
   return (
     <div className="bg-white/5 p-6 border border-white/10 mb-6 group hover:border-white/30 transition-colors">
@@ -124,9 +128,8 @@ export const TempoControl = memo(function TempoControl() {
 });
 
 export const SpeedOptions = memo(function SpeedOptions() {
-  const multiplier = useAtomValue(multiplierAtom);
-  const setMultiplier = useSetAtom(multiplierAtom);
-  const speedOptions = [
+    useRenderLogger('ControlsParts.SpeedOptions');
+  const options = [
     { value: 0.25, label: '1/4x' },
     { value: 0.5, label: '1/2x' },
     { value: 1, label: '1x' },
@@ -137,37 +140,55 @@ export const SpeedOptions = memo(function SpeedOptions() {
     <div className="mb-6">
       <span className="text-xs font-bold text-white/40 uppercase tracking-widest ml-1 mb-3 block">Rhythm Multiplier</span>
       <div className="grid grid-cols-5 gap-1">
-        {speedOptions.map(opt => (
-          <button key={opt.value} onClick={() => setMultiplier(opt.value)} className={multiplier === opt.value ? 'active' : 'inactive'}>
-            <span>{opt.label}</span>
-          </button>
+        {options.map(opt => (
+          <SpeedOption key={opt.value} value={opt.value} label={opt.label} />
         ))}
       </div>
     </div>
+  );
+});
+
+const SpeedOption = memo(function SpeedOption({ value, label }:{ value:number; label:string }) {
+    useRenderLogger(`ControlsParts.SpeedOption(${label})`);
+  const multiplier = useAtomValue(multiplierAtom);
+  const setMultiplier = useSetAtom(multiplierAtom);
+  const onClick = useCallback(() => setMultiplier(value), [setMultiplier, value]);
+  return (
+    <button onClick={onClick} className={multiplier === value ? 'active' : 'inactive'}>
+      <span>{label}</span>
+    </button>
   );
 });
 
 export const ShiftOptions = memo(function ShiftOptions() {
-  const hueStep = useAtomValue(hueStepAtom);
-  const setHueStep = useSetAtom(hueStepAtom);
-  const shiftOptions = [30,45,90,137.5,180,-1];
+  useRenderLogger('ControlsParts.ShiftOptions');
+  const options = [30,45,90,137.5,180,-1];
   return (
     <div className="mb-6">
       <span className="text-xs font-bold text-white/40 uppercase tracking-widest ml-1 mb-3 block">Color Shift (Deg)</span>
       <div className="grid grid-cols-6 gap-1">
-        {shiftOptions.map(opt => (
-          <button key={String(opt)} onClick={() => setHueStep(opt)} className={hueStep === opt ? 'active' : 'inactive'}>
-            <span>{opt === -1 ? 'RND' : (opt === 137.5 ? 'GOLD' : `${opt}°`)}</span>
-          </button>
+        {options.map(opt => (
+          <ShiftOption key={String(opt)} value={opt} />
         ))}
       </div>
     </div>
   );
 });
 
+const ShiftOption = memo(function ShiftOption({ value }:{ value:number }) {
+    useRenderLogger(`ControlsParts.ShiftOption(${value})`);
+  const hueStep = useAtomValue(hueStepAtom);
+  const setHueStep = useSetAtom(hueStepAtom);
+  const onClick = useCallback(() => setHueStep(value), [setHueStep, value]);
+  return (
+    <button onClick={onClick} className={hueStep === value ? 'active' : 'inactive'}>
+      <span>{value === -1 ? 'RND' : (value === 137.5 ? 'GOLD' : `${value}°`)}</span>
+    </button>
+  );
+});
+
 export const ModeOptions = memo(function ModeOptions() {
-  const mode = useAtomValue(modeAtom);
-  const setMode = useSetAtom(modeAtom);
+  useRenderLogger('ControlsParts.ModeOptions');
   const options = [
     { id: ColorMode.FLOW, label: 'FLOW' },
     { id: ColorMode.STEP, label: 'STEP' },
@@ -178,21 +199,33 @@ export const ModeOptions = memo(function ModeOptions() {
       <span className="text-xs font-bold text-white/40 uppercase tracking-widest ml-1">Mode</span>
       <div className="grid grid-cols-3 gap-2">
         {options.map(m => (
-          <button key={m.id} onClick={() => setMode(m.id)} className={mode === m.id ? 'active' : 'inactive'}>
-            <span>{m.label}</span>
-          </button>
+          <ModeOption key={m.id} id={m.id} label={m.label} />
         ))}
       </div>
     </div>
   );
 });
 
+const ModeOption = memo(function ModeOption({ id, label }: { id:ColorMode; label:string }) {
+    useRenderLogger(`ControlsParts.ModeOption(${label})`);
+  const mode = useAtomValue(modeAtom);
+  const setMode = useSetAtom(modeAtom);
+  const onClick = useCallback(() => setMode(id), [setMode, id]);
+  return (
+    <button onClick={onClick} className={mode === id ? 'active' : 'inactive'}>
+      <span>{label}</span>
+    </button>
+  );
+});
+
 export const PlaybackButtons = memo(function PlaybackButtons({ toggleFullscreen }: { toggleFullscreen: () => void }) {
+  useRenderLogger('ControlsParts.PlaybackButtons');
   const isPlaying = useAtomValue(isPlayingAtom);
   const setPlaying = useSetAtom(isPlayingAtom);
+  const togglePlaying = useCallback(() => setPlaying(p => !p), [setPlaying]);
   return (
     <div className="grid grid-cols-2 gap-4">
-      <button onClick={() => setPlaying(!isPlaying)}>{isPlaying ? <Pause /> : <Play />}</button>
+      <button onClick={togglePlaying}>{isPlaying ? <Pause /> : <Play />}</button>
       <button onClick={toggleFullscreen}><Maximize /></button>
     </div>
   );

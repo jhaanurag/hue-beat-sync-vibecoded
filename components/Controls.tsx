@@ -22,6 +22,7 @@ import { atom, useAtom, useAtomValue, useSetAtom, useStore } from 'jotai';
 import { bpmAtom, multiplierAtom, isPlayingAtom, modeAtom, visibleAtom, hueStepAtom } from '../state/atoms';
 import KeyboardShortcuts from './KeyboardShortcuts';
 import { animationState } from '../lib/animation';
+import { useRenderLogger } from './renderLogger';
 const speedOptions = [
   { value: 0.25, label: '1/4x' },
   { value: 0.5, label: '1/2x' },
@@ -48,13 +49,15 @@ const modeOptions = [
 const TempoSection: React.FC = React.memo(() => {
   const bpm = useAtomValue(bpmAtom);
   const setBpm = useSetAtom(bpmAtom);
+  const halfBpm = useCallback(() => setBpm(x => Math.max(1, Math.floor(x / 2))), [setBpm]);
+  const doubleBpm = useCallback(() => setBpm(x => Math.min(999, x * 2)), [setBpm]);
   return (
-    <div className="bg-white/5 p-6 border border-white/10 mb-6 group hover:border-white/30 transition-colors">
+    <div className="bg-white/5 p-4 sm:p-6 border border-white/10 mb-6 group hover:border-white/30 transition-colors">
       <div className="flex items-center justify-between mb-6">
         <div className="flex flex-col">
           <span className="text-xs font-bold text-white/40 uppercase tracking-widest mb-2">Tempo</span>
           <div className="flex items-baseline gap-2">
-            <input type="number" value={bpm || ''} onChange={(e) => setBpm(Math.min(999, Math.abs(parseInt(e.target.value) || 0)))} onBlur={() => { if (bpm < 1) setBpm(120) }} className="bg-transparent text-5xl font-bold text-white tracking-tighter w-32 outline-none border-b-2 border-transparent focus:border-white/50 transition-colors placeholder-white/20" placeholder="---" />
+            <input type="number" value={bpm || ''} onChange={(e) => setBpm(Math.min(999, Math.abs(parseInt(e.target.value) || 0)))} onBlur={() => { if (bpm < 1) setBpm(120) }} className="bg-transparent text-3xl sm:text-5xl font-bold text-white tracking-tighter w-24 sm:w-32 outline-none border-b-2 border-transparent focus:border-white/50 transition-colors placeholder-white/20" placeholder="---" />
             <span className="text-sm text-white/50 font-bold">BPM</span>
           </div>
         </div>
@@ -67,41 +70,60 @@ const TempoSection: React.FC = React.memo(() => {
         <div className="flex justify-between text-[10px] font-bold text-white/30 mt-2 font-mono uppercase tracking-widest select-none"><span>60</span><span>120</span><span>180</span></div>
       </div>
       <div className="grid grid-cols-2 gap-2">
-      <button onClick={() => setBpm(x => Math.max(1, Math.floor(x / 2)))} className="flex items-center justify-center gap-2 py-3 bg-white/5 hover:bg-white/10 text-white/70 hover:text-white transition-colors text-xs font-bold border border-white/5 hover:border-white/30 uppercase tracking-wider"><span className="text-lg opacity-50">÷2</span> Half</button>
-      <button onClick={() => setBpm(x => Math.min(999, x * 2))} className="flex items-center justify-center gap-2 py-3 bg-white/5 hover:bg-white/10 text-white/70 hover:text-white transition-colors text-xs font-bold border border-white/5 hover:border-white/30 uppercase tracking-wider"><span className="text-lg opacity-50">×2</span> Double</button>
+      <button onClick={halfBpm} className="flex items-center justify-center gap-2 py-3 bg-white/5 hover:bg-white/10 text-white/70 hover:text-white transition-colors text-xs font-bold border border-white/5 hover:border-white/30 uppercase tracking-wider"><span className="text-lg opacity-50">÷2</span> Half</button>
+      <button onClick={doubleBpm} className="flex items-center justify-center gap-2 py-3 bg-white/5 hover:bg-white/10 text-white/70 hover:text-white transition-colors text-xs font-bold border border-white/5 hover:border-white/30 uppercase tracking-wider"><span className="text-lg opacity-50">×2</span> Double</button>
       </div>
     </div>
   );
 });
 
-const SpeedGrid: React.FC = React.memo(() => {
-  const multiplier = useAtomValue(multiplierAtom);
+const SpeedButton = React.memo(({ value, label }:{ value:number; label:string }) => {
+  useRenderLogger(`SpeedButton(${label})`);
+  // derived atom so only the active button subscribes to the shared multiplierAtom
+  const isActiveAtom = useMemo(() => atom((get) => get(multiplierAtom) === value), [value]);
+  const isActive = useAtomValue(isActiveAtom);
   const setMultiplier = useSetAtom(multiplierAtom);
+  const onClick = useCallback(() => setMultiplier(value), [setMultiplier, value]);
+  return (
+    <button onClick={onClick} className={`flex flex-col items-center justify-center py-2 sm:py-3 px-1 min-h-[44px] border transition-all ${isActive ? 'bg-white text-black border-white' : 'bg-transparent text-white/60 border-white/10 hover:bg-white/5 hover:border-white/30'}`}>
+      <span className="text-xs font-bold">{label}</span>
+    </button>
+  );
+});
+
+const SpeedGrid: React.FC = React.memo(() => {
   return (
     <div className="mb-6">
       <span className="text-xs font-bold text-white/40 uppercase tracking-widest ml-1 mb-3 block">Rhythm Multiplier</span>
-      <div className="grid grid-cols-5 gap-1">
+      <div className="grid grid-cols-3 sm:grid-cols-5 gap-1 sm:gap-2">
         {speedOptions.map(opt => (
-          <button key={opt.value} onClick={() => setMultiplier(opt.value)} className={`flex flex-col items-center justify-center py-3 px-1 border transition-all ${multiplier === opt.value ? 'bg-white text-black border-white' : 'bg-transparent text-white/60 border-white/10 hover:bg-white/5 hover:border-white/30'}`}>
-            <span className="text-xs font-bold">{opt.label}</span>
-          </button>
+          <SpeedButton key={opt.value} value={opt.value} label={opt.label} />
         ))}
       </div>
     </div>
   );
 });
 
-const ShiftGrid: React.FC = React.memo(() => {
-  const hueStep = useAtomValue(hueStepAtom);
+const ShiftButton = React.memo(({ value, label }:{ value:number; label:string }) => {
+  useRenderLogger(`ShiftButton(${label})`);
+  const isActiveAtom = useMemo(() => atom((get) => get(hueStepAtom) === value), [value]);
+  const isActive = useAtomValue(isActiveAtom);
   const setHueStep = useSetAtom(hueStepAtom);
+  const onClick = useCallback(() => setHueStep(value), [setHueStep, value]);
+  return (
+    <button onClick={onClick} className={`flex flex-col items-center justify-center py-2 sm:py-3 px-1 min-h-[44px] border transition-all ${isActive ? 'bg-white text-black border-white' : 'bg-transparent text-white/60 border-white/10 hover:bg-white/5 hover:border-white/30'}`}>
+      {label === 'RND' ? <Shuffle size={12} /> : <span className="text-[10px] font-bold">{label}</span>}
+    </button>
+  );
+});
+
+const ShiftGrid: React.FC = React.memo(() => {
   return (
     <div className="mb-6">
       <span className="text-xs font-bold text-white/40 uppercase tracking-widest ml-1 mb-3 block">Color Shift (Deg)</span>
-      <div className="grid grid-cols-6 gap-1">
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-1 sm:gap-2">
         {shiftOptions.map(opt => (
-          <button key={opt.value} onClick={() => setHueStep(opt.value)} className={`flex flex-col items-center justify-center py-3 px-1 border transition-all ${hueStep === opt.value ? 'bg-white text-black border-white' : 'bg-transparent text-white/60 border-white/10 hover:bg-white/5 hover:border-white/30'}`}>
-            {opt.label === 'RND' ? <Shuffle size={12} /> : <span className="text-[10px] font-bold">{opt.label}</span>}
-          </button>
+          <ShiftButton key={opt.value} value={opt.value} label={opt.label} />
         ))}
       </div>
     </div>
@@ -110,6 +132,7 @@ const ShiftGrid: React.FC = React.memo(() => {
 
 // ModeButton is a fully memoized button that only subscribes to a derived atom for its active state.
 const ModeButton: React.FC<{ id: ColorMode; label: string; Icon: any }> = React.memo(({ id, label, Icon }) => {
+  useRenderLogger(`ModeButton(${label})`);
   // memoize the derived atom per `id` so the atom reference is stable across renders
   const isActiveAtom = useMemo(() => atom((get) => get(modeAtom) === id), [id]);
   const isActive = useAtomValue(isActiveAtom);
@@ -118,9 +141,9 @@ const ModeButton: React.FC<{ id: ColorMode; label: string; Icon: any }> = React.
   return (
     <button
       onClick={onClick}
-      className={`flex flex-col items-center justify-center gap-2 p-4 border transition-all ${isActive ? 'bg-white text-black border-white' : 'bg-transparent text-white/60 border-white/10 hover:bg-white/5 hover:border-white/30'}`}
+      className={`flex flex-col items-center justify-center gap-2 p-3 sm:p-4 border transition-all ${isActive ? 'bg-white text-black border-white' : 'bg-transparent text-white/60 border-white/10 hover:bg-white/5 hover:border-white/30'}`}
     >
-      <Icon size={20} />
+      <Icon size={18} />
       <span className="text-xs font-bold tracking-wider">{label}</span>
     </button>
   );
@@ -130,7 +153,7 @@ const ModesGrid: React.FC = React.memo(() => {
   return (
     <div className="space-y-2 mb-8">
       <span className="text-xs font-bold text-white/40 uppercase tracking-widest ml-1">Mode</span>
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 sm:gap-2">
         {modeOptions.map((m) => (
           <ModeButton key={m.id} id={m.id} label={m.label} Icon={m.icon} />
         ))}
@@ -141,20 +164,36 @@ const ModesGrid: React.FC = React.memo(() => {
 
 // Small HUD is exported below and will handle DOM updates without subscribing via React.
 
-const PlaybackControls: React.FC<{ toggleFullscreen: () => void }> = React.memo(({ toggleFullscreen }) => {
+const PlayButton: React.FC = React.memo(() => {
+  useRenderLogger('PlayButton');
   const isPlaying = useAtomValue(isPlayingAtom);
   const setIsPlaying = useSetAtom(isPlayingAtom);
+  const togglePlaying = useCallback(() => setIsPlaying(p => !p), [setIsPlaying]);
   return (
-    <div className="grid grid-cols-2 gap-4">
-      <button onClick={() => setIsPlaying(!isPlaying)} className={`flex items-center justify-center gap-3 p-5 font-bold transition-all border ${isPlaying ? 'bg-white text-black border-white hover:bg-gray-200' : 'bg-transparent text-white border-white/20 hover:border-white hover:bg-white/5'}`}>
-        {isPlaying ? <Pause size={20} /> : <Play size={20} />}{isPlaying ? 'PAUSE' : 'START'}
-      </button>
-      <button onClick={toggleFullscreen} className="flex items-center justify-center gap-3 p-5 bg-transparent hover:bg-white/5 text-white border border-white/20 hover:border-white transition-colors"><Maximize size={20} /><span className="text-sm font-bold">FULLSCREEN</span></button>
+    <button onClick={togglePlaying} className={`flex items-center justify-center gap-3 p-3 sm:p-5 font-bold transition-all border ${isPlaying ? 'bg-white text-black border-white hover:bg-gray-200' : 'bg-transparent text-white border-white/20 hover:border-white hover:bg-white/5'}`}>
+      {isPlaying ? <Pause size={20} /> : <Play size={20} />}{isPlaying ? 'PAUSE' : 'START'}
+    </button>
+  );
+});
+
+const FullscreenButton: React.FC<{ toggleFullscreen: () => void }> = React.memo(({ toggleFullscreen }) => {
+  useRenderLogger('FullscreenButton');
+  return (
+    <button onClick={toggleFullscreen} className="flex items-center justify-center gap-3 p-3 sm:p-5 bg-transparent hover:bg-white/5 text-white border border-white/20 hover:border-white transition-colors"><Maximize size={20} /><span className="text-sm font-bold">FULLSCREEN</span></button>
+  );
+});
+
+const PlaybackControls: React.FC<{ toggleFullscreen: () => void }> = React.memo(({ toggleFullscreen }) => {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <PlayButton />
+      <FullscreenButton toggleFullscreen={toggleFullscreen} />
     </div>
   );
 });
 
 const TempoActions: React.FC = React.memo(() => {
+  useRenderLogger('TempoActions');
   const setBpm = useSetAtom(bpmAtom);
   const [tapTimes, setTapTimes] = useState<number[]>([]);
   const handleTap = useCallback(() => {
@@ -171,12 +210,14 @@ const TempoActions: React.FC = React.memo(() => {
       return newTaps;
     });
   }, [setBpm]);
+  const incBpm = useCallback(() => setBpm(x => x + 1), [setBpm]);
+  const decBpm = useCallback(() => setBpm(x => Math.max(1, x - 1)), [setBpm]);
   return (
     <>
-      <button onClick={handleTap} className="px-5 bg-white/10 hover:bg-white/20 text-white font-medium transition-all active:scale-95 flex flex-col items-center justify-center gap-1 border border-white/5 hover:border-white/50"><MousePointerClick size={16} /><span className="text-[10px] uppercase tracking-wide opacity-70">Tap</span></button>
+      <button onClick={handleTap} className="px-4 sm:px-5 min-h-[44px] bg-white/10 hover:bg-white/20 text-white font-medium transition-all active:scale-95 flex flex-col items-center justify-center gap-1 border border-white/5 hover:border-white/50"><MousePointerClick size={16} /><span className="text-[10px] uppercase tracking-wide opacity-70">Tap</span></button>
       <div className="flex flex-col gap-2">
-        <button onClick={() => setBpm(x => x + 1)} className="p-2 bg-white/10 hover:bg-white/20 text-white transition-colors border border-white/5 hover:border-white/50 flex items-center justify-center"><Plus size={14} /></button>
-        <button onClick={() => setBpm(x => Math.max(1, x - 1))} className="p-2 bg-white/10 hover:bg-white/20 text-white transition-colors border border-white/5 hover:border-white/50 flex items-center justify-center"><Minus size={14} /></button>
+        <button onClick={incBpm} className="p-2 bg-white/10 hover:bg-white/20 text-white transition-colors border border-white/5 hover:border-white/50 flex items-center justify-center min-h-[44px] min-w-[44px]"><Plus size={14} /></button>
+        <button onClick={decBpm} className="p-2 bg-white/10 hover:bg-white/20 text-white transition-colors border border-white/5 hover:border-white/50 flex items-center justify-center min-h-[44px] min-w-[44px]"><Minus size={14} /></button>
       </div>
     </>
   );
@@ -220,13 +261,14 @@ export const SmallHud: React.FC = React.memo(() => {
 
 const Header: React.FC = React.memo(() => {
   const setVisible = useSetAtom(visibleAtom);
+  const hide = useCallback(() => setVisible(false), [setVisible]);
   return (
     <div className="flex justify-between items-center mb-8 border-b border-white/10 pb-4">
       <h1 className="text-white font-bold text-2xl tracking-tighter flex items-center gap-3">
         <span className="w-3 h-3 bg-white animate-pulse" style={{ animationDuration: 'var(--hue-pulse-duration)' }}></span>
         HUE_BEAT
       </h1>
-      <button onClick={() => setVisible(false)} className="text-white/50 hover:text-white transition-colors p-2 hover:bg-white/10" title="Hide Controls (Press 'H')">
+      <button onClick={hide} className="text-white/50 hover:text-white transition-colors p-2 hover:bg-white/10" title="Hide Controls (Press 'H')">
         <EyeOff size={20} />
       </button>
     </div>
@@ -244,7 +286,7 @@ const Controls: React.FC<{ toggleFullscreen: () => void }> = ({ toggleFullscreen
       <div className="fixed bottom-6 right-6 z-50">
         <button 
           onClick={showControls}
-          className="bg-black/20 hover:bg-black/50 text-white/50 hover:text-white p-3 backdrop-blur-sm transition-all border border-white/10 hover:border-white"
+          className="bg-black/20 hover:bg-black/50 text-white/50 hover:text-white p-2 sm:p-3 backdrop-blur-sm transition-all border border-white/10 hover:border-white"
         >
           <Activity size={24} />
         </button>
@@ -256,7 +298,7 @@ const Controls: React.FC<{ toggleFullscreen: () => void }> = ({ toggleFullscreen
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none font-mono">
-      <div className="bg-black/80 backdrop-blur-xl border border-white/20 p-8 shadow-2xl pointer-events-auto w-full max-w-md mx-4 animate-in fade-in zoom-in duration-300 max-h-[95vh] overflow-y-auto">
+      <div className="bg-black/80 backdrop-blur-xl border border-white/20 p-4 sm:p-8 shadow-2xl pointer-events-auto w-full max-w-md md:max-w-lg lg:max-w-xl mx-4 animate-in fade-in zoom-in duration-300 max-h-[95vh] overflow-y-auto">
         
         {/* Header */}
         <Header />
